@@ -1,0 +1,25 @@
+# Rust / Tauri
+src-tauri/target
+src-tauri/gen
+
+# Hasil build dan installer (bagikan lewat GitHub Releases, bukan di repo)
+*.exe
+*.msi
+*.dll
+*.pdb
+*.zip
+
+# Node (jika nanti dipakai)
+node_modules/
+
+# Editor dan sistem operasi
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Berkas pribadi
+*.log
+.env
+.env.*

@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NotchNook</title>
+<style>
+  :root {
+    --fg: #f5f5f7; --muted: #86868b; --card: #1c1c1e; --card2: #2c2c2e;
+    --blue: #0a84ff; --green: #30d158; --r: 14px;
+    --accent: #30d158; --accent-bg: #1c1c1e; --spring: cubic-bezier(.34, 1.56, .64, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none;
+    font: 13px/1.3 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--fg); }
+  button { all: unset; box-sizing: border-box; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---- Notch: bentuk hitam dengan "telinga" cekung di atas, seperti notch MacBook ---- */
+  .notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 264px; height: 32px; background: #000; border-radius: 0 0 18px 18px;
+    transition: opacity .25s ease, width .3s cubic-bezier(.3,.9,.3,1), height .3s cubic-bezier(.3,.9,.3,1), border-radius .3s ease; }
+  .notch::before, .notch::after { content: ""; position: absolute; top: 0; width: var(--r); height: var(--r); }
+  .notch::before { left: calc(var(--r) * -1); background: radial-gradient(circle at 0 100%, transparent calc(var(--r) - .5px), #000 var(--r)); }
+  .notch::after  { right: calc(var(--r) * -1); background: radial-gradient(circle at 100% 100%, transparent calc(var(--r) - .5px), #000 var(--r)); }
+  .notch.ghost:not(.open) { opacity: 0; }
+  .notch.open { width: 500px; height: 200px; border-radius: 0 0 28px 28px; }
+  /* Membuka dan pop-up memakai kurva "pegas" supaya sedikit memantul; menutup tetap halus tanpa pantulan */
+  .notch.open, .notch.peek { transition: opacity .25s ease, width .6s var(--spring), height .6s var(--spring), border-radius .45s ease; }
+  .notch.peek:not(.open) { width: 340px; height: 60px; border-radius: 0 0 26px 26px; opacity: 1; }
+  .notch.peek:not(.open) .mini { opacity: 0; }
+  .peekui { position: absolute; inset: 0; display: flex; align-items: center; gap: 12px; padding: 6px 18px 0; opacity: 0; transition: opacity .15s; }
+  .notch.peek:not(.open) .peekui { opacity: 1; transition-delay: .15s; }
+  .pi { width: 34px; height: 34px; border-radius: 10px; background: var(--card2) center/cover; display: grid; place-items: center; flex: none; }
+  .pi .ic { width: 18px; height: 18px; }
+  .pm { min-width: 0; } .pt { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ps { font-size: 11px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .body { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
+
+  /* Keadaan tertutup: dua sisi seperti notch MacBook (kiri: musik atau jam, kanan: timer, equalizer, atau status) */
+  .mini { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 14px;
+    font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; transition: opacity .1s; }
+  .notch.open .mini { opacity: 0; pointer-events: none; }
+  .mini .side { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .mini .ic { width: 13px; height: 13px; color: var(--muted); }
+  .mini .ic.on { color: var(--fg); } .mini .ic.net { color: var(--blue); } .mini .ic.bt { color: var(--blue); }
+  .mini .cover { width: 20px; height: 20px; border-radius: 6px; background: #333 center/cover; flex: none; }
+  .mini .ttl { max-width: 112px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bars { display: flex; gap: 2px; align-items: flex-end; height: 14px; }
+  .bars i { width: 3px; border-radius: 2px; background: var(--accent); height: 40%; animation: eq 1s ease-in-out infinite; }
+  .bars i:nth-child(2) { animation-delay: -.3s; } .bars i:nth-child(3) { animation-delay: -.6s; } .bars i:nth-child(4) { animation-delay: -.15s; }
+  @keyframes eq { 50% { height: 100%; } }
+
+  /* Panel terbuka */
+  .panel { position: absolute; inset: 0; padding: 6px 14px 14px; opacity: 0; pointer-events: none; transform: translateY(-8px) scale(.96); transform-origin: top center; transition: opacity .15s ease, transform .3s ease; }
+  .notch.open .panel { opacity: 1; pointer-events: auto; transform: none; transition: opacity .2s ease .1s, transform .6s var(--spring) .05s; }
+  header { height: 30px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  nav { display: flex; gap: 4px; }
+  nav button { width: 34px; height: 26px; border-radius: 13px; display: grid; place-items: center; color: var(--muted); }
+  nav button:hover { color: var(--fg); }
+  nav button[aria-selected="true"] { background: var(--card2); color: var(--fg); }
+  .status { display: flex; align-items: center; gap: 10px; }
+  .status > .ic { width: 15px; height: 15px; color: var(--muted); opacity: .45; }
+  .status > .ic.net { opacity: 1; color: var(--blue); }
+  .status > .ic.on { opacity: 1; color: var(--fg); }
+  .status > .ic.bt-on { opacity: 1; color: var(--blue); }
+
+  .tab { display: none; height: 138px; gap: 10px; }
+  .tab.active { display: grid; }
+  #tab-home { grid-template-columns: 1.25fr 1fr; }
+  #tab-apps { grid-template-columns: 1fr 1.3fr; }
+  #tab-net { grid-template-columns: 1fr 1fr; }
+  #tab-sys { grid-template-columns: 1fr 1fr 1.25fr; }
+  .gauge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+  .ring { position: relative; width: 70px; height: 70px; }
+  .ring svg { width: 100%; height: 100%; }
+  .ring circle:last-child { transition: stroke-dasharray .6s ease, stroke .4s ease; }
+  .ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .gauge .lbl { font-size: 12px; color: var(--muted); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .netc { display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+  .rate { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .rate .ic { width: 16px; height: 16px; } .rate.d .ic { color: var(--green); } .rate.u .ic { color: var(--blue); }
+  .conn { cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
+  .conn:hover { background: var(--card2); }
+  .conn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .conn .head { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  .conn .big { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conn .sub { color: var(--muted); font-size: 12px; }
+  .sig { display: flex; gap: 3px; align-items: flex-end; height: 24px; margin-top: auto; }
+  .sig i { width: 6px; border-radius: 2px; background: var(--card2); }
+  .conn:hover .sig i { background: #3a3a3c; }
+  .sig i:nth-child(1) { height: 7px; } .sig i:nth-child(2) { height: 12px; } .sig i:nth-child(3) { height: 18px; } .sig i:nth-child(4) { height: 24px; }
+  .conn .sig i.on { background: var(--fg); }
+  .devs { display: flex; flex-direction: column; gap: 5px; overflow: hidden; }
+  .devs div { display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #setBtn { width: 24px; height: 24px; border-radius: 12px; display: grid; place-items: center; color: var(--muted); margin-left: 2px; transition: transform .45s var(--spring), color .2s, background .2s; }
+  #setBtn:hover { background: var(--card2); color: var(--fg); }
+  #setBtn[aria-pressed="true"] { color: var(--fg); background: var(--card2); transform: rotate(60deg); }
+  #setBtn .ic { width: 16px; height: 16px; }
+  #tab-settings { grid-template-columns: 1fr; }
+  .pane.tight { padding: 8px 12px; gap: 6px; }
+  .setrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 8px; height: 28px; border-radius: 9px; font-size: 12.5px; flex: none; }
+  .setrow .lb { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .setrow .lb small { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  .seg { display: flex; gap: 4px; }
+  .seg button { padding: 3px 10px; border-radius: 10px; background: var(--card2); font-size: 11px; color: var(--muted); }
+  .seg button:hover { color: var(--fg); }
+  .seg button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+  .pb.danger { background: #ff453a26; color: #ff453a; } .pb.danger[data-arm] { background: #ff453a; color: #fff; }
+  #tab-wifi, #tab-bt { grid-template-columns: 1fr; }
+  .pane { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+  .phead { display: flex; align-items: center; gap: 8px; }
+  .phead b { font-size: 13px; }
+  .pstat { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ib { width: 26px; height: 26px; border-radius: 13px; display: grid; place-items: center; color: var(--muted); flex: none; }
+  .ib:hover { background: var(--card2); color: var(--fg); }
+  .ib .ic { width: 15px; height: 15px; }
+  .sw { width: 34px; height: 20px; border-radius: 10px; background: #3a3a3c; position: relative; transition: background .2s; flex: none; }
+  .sw i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .25s var(--spring); }
+  .sw[aria-checked="true"] { background: var(--green); } .sw[aria-checked="true"] i { transform: translateX(14px); }
+  .plist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  .plist::-webkit-scrollbar { width: 4px; } .plist::-webkit-scrollbar-thumb { background: #48484a; border-radius: 2px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 9px; font-size: 12.5px; flex: none; }
+  .row.go { cursor: pointer; } .row.go:hover { background: var(--card2); }
+  .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .st { color: var(--muted); font-size: 11px; }
+  .row.cur .nm { color: var(--blue); font-weight: 600; }
+  .row .ic { width: 13px; height: 13px; color: var(--muted); }
+  .row .db { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; }
+  .mb { display: flex; gap: 2px; align-items: flex-end; height: 13px; }
+  .mb i { width: 3px; border-radius: 1px; background: #4a4a4c; }
+  .mb i.on { background: var(--fg); }
+  .mb i:nth-child(1) { height: 4px; } .mb i:nth-child(2) { height: 7px; } .mb i:nth-child(3) { height: 10px; } .mb i:nth-child(4) { height: 13px; }
+  .pb { padding: 4px 12px; border-radius: 12px; background: var(--card2); font-size: 11.5px; font-weight: 600; flex: none; }
+  .pb:hover { background: #3a3a3c; } .pb.go { background: var(--blue); color: #fff; }
+  .pwd { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+  .pwd .l { color: var(--muted); font-size: 12px; }
+  .pwd .r { display: flex; gap: 6px; align-items: center; }
+  .pwd input { all: unset; box-sizing: border-box; flex: 1; min-width: 0; background: var(--card2); border-radius: 9px; padding: 7px 10px; font-size: 12.5px; user-select: text; }
+  .pwd input:focus-visible { outline: 2px solid var(--blue); }
+  .devs .dn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .devs .db { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .devs div::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); flex: none; }
+  .card { background: var(--card); border-radius: 16px; padding: 12px; min-width: 0; }
+
+  /* Media */
+  .media { display: flex; flex-direction: column; justify-content: space-between; gap: 6px; background: var(--accent-bg); transition: background .6s ease; }
+  .prog { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; visibility: hidden; }
+  .prog span { min-width: 28px; } .prog span:last-child { text-align: right; }
+  .pbar { flex: 1; height: 4px; border-radius: 2px; background: #ffffff26; position: relative; cursor: pointer; }
+  .pbar::before { content: ""; position: absolute; inset: -7px 0; }
+  .pbar i { display: block; height: 100%; width: 0; border-radius: 2px; background: var(--accent); transition: width .8s linear, background .6s; }
+  .media .row { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  .art { width: 56px; height: 56px; box-shadow: 0 6px 18px -8px var(--accent); transition: box-shadow .6s; border-radius: 12px; background: var(--card2) center/cover; display: grid; place-items: center; color: var(--muted); flex: none; }
+  .art:not(.empty) svg { display: none; }
+  .meta { min-width: 0; }
+  .title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .artist { color: var(--muted); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .controls { display: flex; justify-content: center; gap: 14px; }
+  .controls button { width: 40px; height: 30px; border-radius: 17px; display: grid; place-items: center; }
+  .controls button:hover { background: var(--card2); }
+  .controls .ic { width: 20px; height: 20px; }
+  .controls #pp { background: var(--fg); color: #000; }
+  .controls #pp:hover { background: #fff; }
+
+  /* Kalender */
+  .cal { display: flex; flex-direction: column; justify-content: space-between; }
+  .cal .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .donut { position: relative; width: 42px; height: 42px; flex: none; }
+  .donut svg { width: 100%; height: 100%; }
+  .donut span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #donutArc { stroke: #30d158; transition: stroke-dasharray .4s ease, stroke .3s ease; }
+  .clock { font-size: 34px; font-weight: 300; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .date { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+  .week span { font-size: 10px; color: var(--muted); display: block; }
+  .week b { display: grid; place-items: center; width: 24px; height: 24px; margin: 2px auto 0; font-weight: 500; font-size: 12px; border-radius: 50%; }
+  .week .today b { background: var(--blue); }
+
+  /* Shelf */
+  #tab-shelf { grid-template-columns: 1fr; }
+  .shelf { position: relative; display: flex; flex-direction: column; border: 1.5px dashed transparent; transition: border-color .15s, background .15s; }
+  .shelf.over { border-color: var(--blue); background: #0a2540; }
+  .empty-msg { margin: auto; text-align: center; color: var(--muted); }
+  .empty-msg .ic { width: 28px; height: 28px; margin-bottom: 6px; }
+  .items { display: grid; grid-template-columns: repeat(auto-fill, 84px); gap: 8px; overflow-y: auto; align-content: start; height: 100%; }
+  .item { position: relative; width: 84px; height: 84px; border-radius: 12px; background: var(--card2); padding: 10px 6px 6px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .item:hover { background: #3a3a3c; }
+  .item .ext { font-size: 10px; font-weight: 700; color: var(--blue); }
+  .item .nm { font-size: 11px; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .rm { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: #000a; display: none; place-items: center; }
+  .item:hover .rm { display: grid; }
+  .item .rm .ic { width: 11px; height: 11px; }
+
+  /* Alat */
+  .timer { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
+  .timer .t { font-size: 36px; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: -1px; line-height: 1.1; }
+  .chips { display: flex; gap: 4px; }
+  .chip { padding: 3px 9px; border-radius: 10px; background: var(--card2); font-size: 11px; color: var(--muted); }
+  .chip[aria-pressed="true"] { background: var(--blue); color: #fff; }
+  .tbtn { display: flex; gap: 6px; }
+  .tbtn button { padding: 6px 14px; border-radius: 14px; background: var(--card2); font-weight: 600; font-size: 12px; }
+  .tbtn button.go { background: var(--green); color: #000; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 8px; }
+  .app { background: var(--card); border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .app:hover { background: var(--card2); color: var(--fg); }
+  .app .ic { width: 22px; height: 22px; color: var(--fg); }
+
+  /* Catatan */
+  #tab-notes { grid-template-columns: 1fr; }
+  textarea { all: unset; box-sizing: border-box; width: 100%; height: 100%; resize: none; font: inherit; font-size: 13px; line-height: 1.5; color: var(--fg); user-select: text; }
+  textarea::placeholder { color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) { .notch, .panel, .bars i { transition: none; animation: none; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></symbol>
+  <symbol id="i-tray" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 5v14L7 12z" fill="currentColor" stroke="none"/><rect x="4" y="5" width="2.5" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5v14l11-7z" fill="currentColor" stroke="none"/><rect x="17.5" y="5" width="2.5" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><path d="M5 8l5 4-5 4M12 17h7"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+  <symbol id="i-snip" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 8l11 9M8.5 16l11-9"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-bt" viewBox="0 0 24 24"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-act" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M6.6 6.9a8 8 0 1 0 10.8 0"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+  <symbol id="i-login" viewBox="0 0 24 24"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 8l4 4-4 4M14 12H4"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+</svg>
+
+<div class="notch" id="notch">
+  <div class="body">
+    <div class="mini" aria-hidden="true"><div class="side" id="miniL"></div><div class="side" id="miniR"></div></div>
+    <div class="peekui" aria-live="polite"><div class="pi" id="pi"></div><div class="pm"><div class="pt" id="pt"></div><div class="ps" id="ps"></div></div></div>
+
+    <div class="panel">
+      <header>
+        <nav role="tablist" aria-label="Menu notch">
+          <button role="tab" data-tab="home" aria-selected="true" aria-label="Beranda"><svg class="ic"><use href="#i-home"/></svg></button>
+          <button role="tab" data-tab="shelf" aria-selected="false" aria-label="Shelf file"><svg class="ic"><use href="#i-tray"/></svg></button>
+          <button role="tab" data-tab="net" aria-selected="false" aria-label="Koneksi"><svg class="ic"><use href="#i-wifi"/></svg></button>
+          <button role="tab" data-tab="sys" aria-selected="false" aria-label="Sistem"><svg class="ic"><use href="#i-act"/></svg></button>
+          <button role="tab" data-tab="apps" aria-selected="false" aria-label="Alat"><svg class="ic"><use href="#i-grid"/></svg></button>
+          <button role="tab" data-tab="notes" aria-selected="false" aria-label="Catatan"><svg class="ic"><use href="#i-note"/></svg></button>
+        </nav>
+        <div class="status">
+          <svg class="ic" id="gWifi"><use href="#i-wifi"/></svg>
+          <svg class="ic" id="gBt"><use href="#i-bt"/></svg>
+          <button id="setBtn" aria-label="Pengaturan" title="Pengaturan" aria-pressed="false"><svg class="ic"><use href="#i-cog"/></svg></button>
+        </div>
+      </header>
+
+      <section class="tab active" id="tab-home">
+        <div class="card media">
+          <div class="row">
+            <div class="art empty" id="art"><svg class="ic" style="width:26px;height:26px"><use href="#i-music"/></svg></div>
+            <div class="meta"><div class="title" id="title">Tidak ada media</div><div class="artist" id="artist">Putar musik atau video untuk mengontrolnya</div></div>
+          </div>
+          <div class="prog" id="prog"><span id="ptime">0:00</span><div class="pbar" id="pbar" role="slider" aria-label="Posisi lagu"><i id="pfill"></i></div><span id="pdur">0:00</span></div>
+          <div class="controls">
+            <button data-media="prev" aria-label="Sebelumnya"><svg class="ic"><use href="#i-prev"/></svg></button>
+            <button id="pp" data-media="toggle" aria-label="Putar atau jeda"><svg class="ic"><use href="#i-play"/></svg></button>
+            <button data-media="next" aria-label="Berikutnya"><svg class="ic"><use href="#i-next"/></svg></button>
+          </div>
+        </div>
+        <div class="card cal">
+          <div class="top">
+            <div><div class="clock" id="clock">--:--</div><div class="date" id="date"></div></div>
+            <div class="donut" id="donut" hidden>
+              <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16" fill="none" stroke="#3a3a3c" stroke-width="4"/><circle id="donutArc" cx="20" cy="20" r="16" fill="none" stroke-width="4" stroke-linecap="round" transform="rotate(-90 20 20)" stroke-dasharray="0 100"/></svg>
+              <span id="donutPct"></span>
+            </div>
+          </div>
+          <div class="week" id="week"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-shelf">
+        <div class="card shelf" id="shelf">
+          <div class="empty-msg" id="shelfEmpty"><svg class="ic"><use href="#i-tray"/></svg><div>Seret file ke sini untuk menyimpannya, seret keluar untuk memakainya</div></div>
+          <div class="items" id="items"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-net">
+        <div class="card conn" data-go="wifi" role="button" tabindex="0" aria-label="Kelola Wi-Fi">
+          <div class="head"><svg class="ic"><use href="#i-wifi"/></svg>Wi-Fi</div>
+          <div><div class="big" id="wifiName">Memeriksa...</div><div class="sub" id="wifiSub"></div></div>
+          <div class="sig" id="sig"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="card conn" data-go="bt" role="button" tabindex="0" aria-label="Kelola Bluetooth">
+          <div class="head"><svg class="ic"><use href="#i-bt"/></svg>Bluetooth</div>
+          <div><div class="big" id="btState">Memeriksa...</div><div class="sub" id="btSub"></div></div>
+          <div class="devs" id="devs"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-settings">
+        <div class="card pane tight">
+          <div class="phead">
+            <button class="ib" data-go="home" aria-label="Kembali"><svg class="ic"><use href="#i-back"/></svg></button>
+            <b>Pengaturan</b>
+          </div>
+          <div class="setrow">
+            <span class="lb">Tampilan notch</span>
+            <div class="seg" id="modeSeg" role="group" aria-label="Tampilan notch">
+              <button data-mode="smart" aria-pressed="true" title="Sembunyi otomatis saat tertutup jendela">Pintar</button>
+              <button data-mode="show" aria-pressed="false" title="Selalu terlihat">Selalu tampil</button>
+              <button data-mode="hide" aria-pressed="false" title="Hanya muncul saat kursor ke tepi atas">Sembunyi</button>
+            </div>
+          </div>
+          <div class="setrow">
+            <span class="lb">Mulai otomatis saat Windows menyala<small id="autoNote"></small></span>
+            <button class="sw" id="autoSw" role="switch" aria-checked="false" aria-label="Mulai otomatis"><i></i></button>
+          </div>
+          <div class="setrow">
+            <span class="lb">Keluar dari NotchNook</span>
+            <button class="pb danger" id="quitBtn">Keluar</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-wifi">
+        <div class="card pane">
+          <div class="phead">
+            <button class="ib" data-go="net" aria-label="Kembali"><svg class="ic"><use href="#i-back"/></svg></button>
+            <b>Wi-Fi</b><span class="pstat" id="wifiStat"></span>
+            <button class="ib" id="wifiScan" aria-label="Pindai ulang"><svg class="ic"><use href="#i-refresh"/></svg></button>
+            <button class="ib" data-app="wifi" aria-label="Buka pengaturan Wi-Fi"><svg class="ic"><use href="#i-gear"/></svg></button>
+            <button class="sw" id="wifiSw" role="switch" aria-checked="false" aria-label="Wi-Fi"><i></i></button>
+          </div>
+          <div class="plist" id="wifiList"></div>
+          <div class="pwd" id="wifiPwd" hidden>
+            <div class="l" id="pwdFor"></div>
+            <div class="r"><input id="pwdIn" type="password" placeholder="Kata sandi" autocomplete="off"><button class="pb go" id="pwdGo">Sambung</button><button class="pb" id="pwdNo">Batal</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-bt">
+        <div class="card pane">
+          <div class="phead">
+            <button class="ib" data-go="net" aria-label="Kembali"><svg class="ic"><use href="#i-back"/></svg></button>
+            <b>Bluetooth</b><span class="pstat" id="btStat"></span>
+            <button class="ib" id="btScan" aria-label="Muat ulang"><svg class="ic"><use href="#i-refresh"/></svg></button>
+            <button class="ib" data-app="bluetooth" aria-label="Buka pengaturan Bluetooth"><svg class="ic"><use href="#i-gear"/></svg></button>
+            <button class="sw" id="btSw" role="switch" aria-checked="false" aria-label="Bluetooth"><i></i></button>
+          </div>
+          <div class="plist" id="btList"></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-sys">
+        <div class="card gauge">
+          <div class="ring"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="#3a3a3c" stroke-width="6"/><circle id="cpuArc" cx="32" cy="32" r="26" fill="none" stroke-width="6" stroke-linecap="round" transform="rotate(-90 32 32)" stroke-dasharray="0 200"/></svg><b id="cpuPct">--</b></div>
+          <div class="lbl">CPU</div>
+        </div>
+        <div class="card gauge">
+          <div class="ring"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="#3a3a3c" stroke-width="6"/><circle id="ramArc" cx="32" cy="32" r="26" fill="none" stroke-width="6" stroke-linecap="round" transform="rotate(-90 32 32)" stroke-dasharray="0 200"/></svg><b id="ramPct">--</b></div>
+          <div class="lbl" id="ramLbl">RAM</div>
+        </div>
+        <div class="card netc">
+          <div class="rate d"><svg class="ic"><use href="#i-down"/></svg><span id="netDown">--</span></div>
+          <div class="rate u"><svg class="ic"><use href="#i-up"/></svg><span id="netUp">--</span></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-apps">
+        <div class="card timer">
+          <div class="chips" id="chips">
+            <button class="chip" data-min="25" aria-pressed="true">Fokus 25</button>
+            <button class="chip" data-min="5" aria-pressed="false">Istirahat 5</button>
+          </div>
+          <div class="t" id="t">25:00</div>
+          <div class="tbtn"><button class="go" id="tgo">Mulai</button><button id="treset">Atur ulang</button></div>
+        </div>
+        <div class="grid">
+          <button class="app" data-app="calc"><svg class="ic"><use href="#i-calc"/></svg>Kalkulator</button>
+          <button class="app" data-app="notepad"><svg class="ic"><use href="#i-note"/></svg>Notepad</button>
+          <button class="app" data-app="explorer"><svg class="ic"><use href="#i-folder"/></svg>File</button>
+          <button class="app" data-app="terminal"><svg class="ic"><use href="#i-term"/></svg>Terminal</button>
+          <button class="app" data-app="snip"><svg class="ic"><use href="#i-snip"/></svg>Tangkap</button>
+          <button class="app" data-app="settings"><svg class="ic"><use href="#i-gear"/></svg>Pengaturan</button>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-notes">
+        <div class="card"><textarea id="notes" placeholder="Tulis catatan cepat di sini..." spellcheck="false"></textarea></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const T = window.__TAURI__, invoke = (c, a) => T.core.invoke(c, a);
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const notch = $('#notch');
+const store = {
+  get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const S = { media: null, conn: null, batt: null };
+const icon = n => `<svg class="ic"><use href="#i-${n}"/></svg>`;
+
+/* ---- Tab ---- */
+let curTab = 'home';
+function showTab(name) {
+  curTab = name; invoke('set_sys', { on: name === 'sys' });
+  $$('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === (name === 'wifi' || name === 'bt' ? 'net' : name)));
+  $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
+  if (name === 'notes') $('#notes').focus();
+  $('#setBtn').setAttribute('aria-pressed', name === 'settings');
+  if (name === 'wifi') wifiRefresh();
+  if (name === 'bt') btRefresh();
+}
+$$('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+/* ---- Jam & kalender (hanya berjalan saat terbuka) ---- */
+let clockTimer = null;
+function tick() {
+  const d = new Date();
+  $('#clock').textContent = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
+  $('#date').textContent = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (T_timer.running || $('#t').dataset.k !== String(T_timer.left())) drawTimer();
+}
+function drawWeek() {
+  const now = new Date(), mon = new Date(now);
+  mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  $('#week').innerHTML = [...Array(7)].map((_, i) => {
+    const d = new Date(mon); d.setDate(mon.getDate() + i);
+    const lbl = d.toLocaleDateString('id-ID', { weekday: 'narrow' });
+    return `<div class="${d.toDateString() === now.toDateString() ? 'today' : ''}"><span>${lbl}</span><b>${d.getDate()}</b></div>`;
+  }).join('');
+}
+
+/* ---- Media ---- */
+function renderMedia(m) {
+  trackPeek(m); tint(m && m.thumb);
+  if (!m) $('#prog').style.visibility = 'hidden';
+  const playing = !!(m && m.playing), art = m && m.thumb;
+  $('#title').textContent = m ? (m.title || 'Tanpa judul') : 'Tidak ada media';
+  $('#artist').textContent = m ? m.artist : 'Putar musik atau video untuk mengontrolnya';
+  $('#art').style.backgroundImage = art ? `url(${art})` : '';
+  $('#art').classList.toggle('empty', !art);
+  $('#pp').innerHTML = icon(playing ? 'pause' : 'play');
+  S.media = m; notch.classList.toggle('live', playing); drawMini();
+}
+T.event.listen('media', e => renderMedia(e.payload));
+$$('[data-media]').forEach(b => b.onclick = () => invoke('media_cmd', { action: b.dataset.media }));
+
+/* ---- Shelf (drag & drop file) ---- */
+let shelf = store.get('shelf', []);
+function drawShelf() {
+  const box = $('#items'); box.innerHTML = '';
+  $('#shelfEmpty').style.display = shelf.length ? 'none' : '';
+  shelf.forEach((p, i) => {
+    const name = p.split(/[\\/]/).pop(), ext = name.includes('.') ? name.split('.').pop().slice(0, 4).toUpperCase() : 'FILE';
+    const it = document.createElement('div'); it.className = 'item'; it.title = p; it.tabIndex = 0;
+    it.innerHTML = `${icon('file')}<div class="ext"></div><div class="nm"></div><button class="rm" aria-label="Hapus dari shelf">${icon('x')}</button>`;
+    it.querySelector('.ext').textContent = ext; it.querySelector('.nm').textContent = name;
+    it.onclick = () => invoke('open_path', { path: p });
+    it.onkeydown = e => { if (e.key === 'Enter') invoke('open_path', { path: p }); };
+    it.onmousedown = e => {            // geser lebih dari 6 px = mulai menyeret; klik biasa tetap membuka file
+      if (e.button !== 0 || e.target.closest('.rm')) return;
+      const sx = e.clientX, sy = e.clientY;
+      const stop = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', stop); };
+      const mv = ev => { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 6) { stop(); dragOut(p); } };
+      addEventListener('mousemove', mv); addEventListener('mouseup', stop);
+    };
+    it.querySelector('.rm').onclick = e => { e.stopPropagation(); shelf.splice(i, 1); store.set('shelf', shelf); drawShelf(); };
+    box.appendChild(it);
+  });
+}
+function dragOut(path) {          // seret file ke aplikasi lain (drag OLE asli lewat Rust)
+  invoke('drag_out', { path }).catch(err => {
+    if (String(err) === 'missing') { shelf = shelf.filter(x => x !== path); store.set('shelf', shelf); drawShelf(); }   // file sudah tidak ada
+  });
+}
+T.event.listen('tauri://drag-enter', () => $('#shelf').classList.add('over'));
+T.event.listen('tauri://drag-leave', () => $('#shelf').classList.remove('over'));
+T.event.listen('tauri://drag-drop', e => {
+  $('#shelf').classList.remove('over');
+  (e.payload.paths || []).forEach(p => { if (!shelf.includes(p)) shelf.push(p); });
+  store.set('shelf', shelf); drawShelf(); showTab('shelf');
+});
+
+/* ---- Timer fokus ---- */
+const T_timer = { mins: 25, end: 0, paused: 25 * 60, running: false, left() { return this.running ? Math.max(0, Math.round((this.end - Date.now()) / 1000)) : this.paused; } };
+function drawTimer() {
+  const s = T_timer.left(); $('#t').dataset.k = s;
+  $('#t').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  $('#tgo').textContent = T_timer.running ? 'Jeda' : 'Mulai';
+  drawMini();
+}
+function beep() { try { const c = new AudioContext(), o = c.createOscillator(); o.connect(c.destination); o.frequency.value = 880; o.start(); o.stop(c.currentTime + .35); } catch {} }
+setInterval(() => { if (T_timer.running) drawMini(); if (T_timer.running && T_timer.left() === 0) { T_timer.running = false; T_timer.paused = T_timer.mins * 60; beep(); drawTimer(); peek('timer', 'Timer selesai', T_timer.mins + ' menit telah berlalu'); } }, 1000);
+$('#tgo').onclick = () => {
+  if (T_timer.running) { T_timer.paused = T_timer.left(); T_timer.running = false; }
+  else { T_timer.end = Date.now() + T_timer.paused * 1000; T_timer.running = true; }
+  drawTimer();
+};
+$('#treset').onclick = () => { T_timer.running = false; T_timer.paused = T_timer.mins * 60; drawTimer(); };
+$$('.chip').forEach(c => c.onclick = () => {
+  $$('.chip').forEach(x => x.setAttribute('aria-pressed', x === c));
+  T_timer.mins = +c.dataset.min; T_timer.running = false; T_timer.paused = T_timer.mins * 60; drawTimer();
+});
+$$('[data-app]').forEach(b => b.onclick = () => invoke('launch', { id: b.dataset.app }));
+
+/* ---- Catatan (tetap terbuka saat mengetik) ---- */
+const notes = $('#notes'); notes.value = store.get('notes', '');
+notes.oninput = () => store.set('notes', notes.value);
+notes.onfocus = () => invoke('set_pin', { pinned: true });
+notes.onblur = () => invoke('set_pin', { pinned: false });
+
+/* ---- Wi-Fi & Bluetooth ---- */
+function renderConn(c) {
+  connPeek(c); S.conn = c; drawMini();
+  const n = c.net, b = c.bt, wifi = n.kind === 'wifi', wired = n.kind === 'wired';
+  $('#wifiName').textContent = wifi ? (n.name || 'Wi-Fi') : wired ? 'Kabel LAN' : 'Tidak terhubung';
+  $('#wifiSub').textContent = n.kind === 'none' ? 'Wi-Fi mati atau belum tersambung' : n.internet ? 'Terhubung ke internet' : 'Terhubung, tanpa internet';
+  $$('#sig i').forEach((el, i) => el.classList.toggle('on', wired ? true : i < n.bars));
+  $('#gWifi').classList.toggle('net', n.kind !== 'none' && n.internet);
+  $('#gWifi').classList.toggle('on', n.kind !== 'none' && !n.internet);
+
+  $('#btState').textContent = !b.available ? 'Tidak tersedia' : b.on ? 'Aktif' : 'Mati';
+  $('#btSub').textContent = !b.on ? '' : b.devices.length ? b.devices.length + ' perangkat tersambung' : 'Belum ada perangkat tersambung';
+  $('#devs').replaceChildren(...b.devices.slice(0, 4).map(dev => {
+    const d = document.createElement('div'), nm = document.createElement('span');
+    nm.className = 'dn'; nm.textContent = dev.name; d.append(nm);
+    if (dev.battery != null) {          // indikator hanya muncul bila perangkat melaporkan baterai
+      const bb = document.createElement('span'); bb.className = 'db';
+      bb.append(miniRing(dev.battery / 100, battColor({ level: dev.battery / 100, charging: false })), dev.battery + '%'); d.append(bb);
+    }
+    return d;
+  }));
+  $('#gBt').classList.toggle('bt-on', b.on && b.devices.length > 0);
+  $('#gBt').classList.toggle('on', b.on && b.devices.length === 0);
+}
+T.event.listen('conn', e => renderConn(e.payload));
+$$('[role="button"]').forEach(el => el.onkeydown = ev => { if (ev.key === 'Enter') el.click(); });
+
+/* ---- Mode tampilan: pintar (sembunyi otomatis saat tertutup jendela) / selalu tampil / sembunyi ---- */
+const MODES = ['smart', 'show', 'hide'];
+let mode = store.get('hideMode', 'smart'), covered = false;
+if (!MODES.includes(mode)) mode = 'smart';
+function applyGhost() {
+  const ghost = mode === 'hide' || (mode === 'smart' && covered);
+  notch.classList.toggle('ghost', ghost);
+  invoke('set_ghost', { on: ghost });
+  $$('#modeSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
+}
+$$('#modeSeg button').forEach(b => b.onclick = () => { mode = b.dataset.mode; store.set('hideMode', mode); applyGhost(); });
+T.event.listen('covered', e => { covered = !!e.payload; applyGhost(); });
+applyGhost();
+
+/* ---- Baterai: donat di tab Beranda ---- */
+const RING = 2 * Math.PI * 16;
+if (navigator.getBattery) navigator.getBattery().then(b => {
+  const draw = () => {
+    if (S.batt && S.batt.charging !== b.charging) peek('bolt', b.charging ? 'Mengisi daya' : 'Charger dilepas', Math.round(b.level * 100) + '%');
+    S.batt = { level: b.level, charging: b.charging }; drawMini();
+    const p = Math.round(b.level * 100), arc = $('#donutArc');
+    $('#donut').hidden = false;
+    arc.style.strokeDasharray = `${(RING * b.level).toFixed(1)} ${RING.toFixed(1)}`;
+    arc.style.stroke = battColor(b);
+    $('#donutPct').textContent = p;
+    $('#donut').title = 'Baterai ' + p + '%' + (b.charging ? ', mengisi daya' : '');
+  };
+  draw(); b.onlevelchange = b.onchargingchange = draw;
+}).catch(() => {});
+
+/* ---- Isi notch saat tertutup ---- */
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const svgIcon = (n, cls) => { const w = document.createElement('div'); w.innerHTML = icon(n); const s = w.firstChild; if (cls) s.classList.add(cls); return s; };
+const mmss = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+const battColor = b => (b.charging || b.level >= .2) ? '#30d158' : '#ff453a';   // hijau, merah hanya saat <20% dan tidak mengisi
+function miniRing(f, col) {
+  f = Math.max(0, Math.min(1, f)); const C = 2 * Math.PI * 5.5, w = document.createElement('div');
+  w.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke-width="2"><circle cx="7" cy="7" r="5.5" stroke="#3a3a3c"/><circle cx="7" cy="7" r="5.5" stroke="${col}" stroke-linecap="round" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 7 7)"/></svg>`;
+  return w.firstChild;
+}
+function drawMini() {
+  if (notch.classList.contains('open')) return;
+  const m = S.media, playing = !!(m && m.playing), L = $('#miniL'), R = $('#miniR');
+  L.replaceChildren(); R.replaceChildren();
+  if (playing) {                       // kiri: sampul + judul lagu
+    const c = el('div', 'cover'); if (m.thumb) c.style.backgroundImage = `url(${m.thumb})`;
+    L.append(c, el('span', 'ttl', m.title || 'Memutar'));
+  } else {                             // kiri: jam
+    L.append(el('span', '', new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':')));
+  }
+  if (T_timer.running) {               // kanan: hitung mundur timer fokus
+    const s = T_timer.left();
+    R.append(miniRing(s / (T_timer.mins * 60), '#30d158'), el('span', '', mmss(s)));
+  } else if (playing) {                // kanan: equalizer
+    const b = el('div', 'bars'); b.innerHTML = '<i></i><i></i><i></i><i></i>'; R.append(b);
+  } else {                             // kanan: Wi-Fi, Bluetooth, baterai
+    const n = S.conn, bt = n && n.bt.on;
+    R.append(svgIcon('wifi', !n || n.net.kind === 'none' ? '' : n.net.internet ? 'net' : 'on'), svgIcon('bt', bt && n.bt.devices.length ? 'bt' : bt ? 'on' : ''));
+    if (S.batt) R.append(miniRing(S.batt.level, battColor(S.batt)), el('span', '', Math.round(S.batt.level * 100) + '%'));
+  }
+}
+setInterval(drawMini, 20000);          // jaga jam tetap benar saat tertutup
+
+/* ---- Pop-up live activity (notch melebar sebentar saat ada kejadian) ---- */
+const PEEKC = { bt: '#0a84ff', wifi: '#0a84ff', bolt: '#30d158', timer: '#30d158', music: 'var(--accent)' };
+let peekTimer, lastTitle;
+function peek(kind, title, sub, img) {
+  if (notch.classList.contains('open')) return;
+  const pi = $('#pi'); pi.replaceChildren(); pi.style.backgroundImage = img ? `url(${img})` : ''; pi.style.color = PEEKC[kind] || '';
+  if (!img) pi.append(svgIcon(kind === 'music' ? 'music' : kind));
+  $('#pt').textContent = title; $('#ps').textContent = sub || '';
+  notch.classList.add('peek');
+  clearTimeout(peekTimer); peekTimer = setTimeout(() => notch.classList.remove('peek'), 3400);
+}
+function trackPeek(m) {
+  const t = m ? m.title : null;
+  if (lastTitle !== undefined && t && t !== lastTitle && m.playing) peek('music', t, m.artist, m.thumb);
+  lastTitle = t;
+}
+function connPeek(c) {
+  const p = S.conn; if (!p) return;
+  const has = (list, d) => list.some(x => x.name === d.name);
+  const added = c.bt.devices.filter(d => !has(p.bt.devices, d)), gone = p.bt.devices.filter(d => !has(c.bt.devices, d));
+  if (added.length) peek('bt', added[0].name, 'Bluetooth tersambung');
+  else if (gone.length) peek('bt', gone[0].name, 'Bluetooth terputus');
+  else if (c.net.kind !== p.net.kind || c.net.name !== p.net.name) {
+    if (c.net.kind === 'none') peek('wifi', 'Jaringan terputus', '');
+    else peek('wifi', c.net.name || 'Kabel LAN', c.net.internet ? 'Terhubung ke internet' : 'Terhubung, tanpa internet');
+  }
+}
+
+/* ---- Warna aksen dari sampul album ---- */
+let lastThumb = '';
+function tint(url) {
+  url = url || ''; if (url === lastThumb) return; lastThumb = url;
+  const root = document.documentElement.style;
+  if (!url) { root.removeProperty('--accent'); root.removeProperty('--accent-bg'); return; }
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 24;
+      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, 24, 24);
+      const d = g.getImageData(0, 0, 24, 24).data; let r = 0, gr = 0, b = 0, w = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+        const wt = ((mx - mn) / (mx || 1)) ** 2 * (mx / 255) + 0.02;   // utamakan warna yang hidup dan terang
+        r += d[i] * wt; gr += d[i + 1] * wt; b += d[i + 2] * wt; w += wt;
+      }
+      if (!w) return; r /= w; gr /= w; b /= w;
+      const R = r / 255, G = gr / 255, B = b / 255, mx = Math.max(R, G, B), mn = Math.min(R, G, B), dl = mx - mn, l = (mx + mn) / 2;
+      let h = 0, s = dl ? dl / (1 - Math.abs(2 * l - 1)) : 0;
+      if (s < .12) { root.setProperty('--accent', '#e5e5ea'); root.setProperty('--accent-bg', '#2a2a2c'); return; }   // sampul abu-abu
+      h = mx === R ? ((G - B) / dl) % 6 : mx === G ? (B - R) / dl + 2 : (R - G) / dl + 4; h = Math.round((h * 60 + 360) % 360);
+      s = Math.min(Math.max(s, .45), .9);
+      root.setProperty('--accent', `hsl(${h} ${Math.round(s * 100)}% 60%)`);
+      root.setProperty('--accent-bg', `hsl(${h} ${Math.round(s * 45)}% 20%)`);
+    } catch {}
+  };
+  img.src = url;
+}
+
+/* ---- Bar progres lagu (klik untuk melompat) ---- */
+let mt = null;
+const fmtT = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+T.event.listen('mtime', e => {
+  mt = e.payload; $('#prog').style.visibility = mt ? 'visible' : 'hidden'; if (!mt) return;
+  $('#pfill').style.width = (100 * mt.pos / mt.dur) + '%'; $('#ptime').textContent = fmtT(mt.pos); $('#pdur').textContent = fmtT(mt.dur);
+});
+$('#pbar').onclick = ev => {
+  if (!mt) return; const r = ev.currentTarget.getBoundingClientRect();
+  invoke('media_seek', { ms: Math.round(Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)) * mt.dur) });
+};
+
+/* ---- Monitor sistem ---- */
+const loadColor = f => f < .6 ? '#30d158' : f < .85 ? '#ff9f0a' : '#ff453a';
+function setArc(sel, f) { const a = $(sel), C = 2 * Math.PI * 26; a.style.strokeDasharray = `${(C * f).toFixed(1)} ${C.toFixed(1)}`; a.style.stroke = loadColor(f); }
+const fmtRate = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB/s' : b >= 1024 ? Math.round(b / 1024) + ' KB/s' : b + ' B/s';
+T.event.listen('sys', e => {
+  const s = e.payload;
+  setArc('#cpuArc', s.cpu / 100); $('#cpuPct').textContent = s.cpu + '%';
+  setArc('#ramArc', s.ram / 100); $('#ramPct').textContent = s.ram + '%';
+  $('#ramLbl').textContent = 'RAM ' + (s.used_mb / 1024).toFixed(1) + ' / ' + (s.total_mb / 1024).toFixed(1) + ' GB';
+  $('#netDown').textContent = fmtRate(s.down); $('#netUp').textContent = fmtRate(s.up);
+});
+
+/* ---- Menu cepat Wi-Fi ---- */
+const setSw = (sel, v) => { const b = $(sel); b.setAttribute('aria-checked', v === true); b.style.opacity = v == null ? .4 : ''; };
+const mb = n => { const d = el('div', 'mb'); for (let i = 0; i < 4; i++) { const x = document.createElement('i'); if (i < n) x.className = 'on'; d.append(x); } return d; };
+let wifiCur = '', pwdSsid = '';
+async function wifiRefresh() {
+  hidePwd(); $('#wifiStat').textContent = 'Memindai...'; $('#wifiList').replaceChildren();
+  let r; try { r = await invoke('wifi_list'); } catch { r = { error: 'error', radio: null, nets: [] }; }
+  setSw('#wifiSw', r.radio);
+  wifiCur = S.conn && S.conn.net.kind === 'wifi' ? S.conn.net.name : '';
+  if (r.error) { $('#wifiStat').textContent = { off: 'Wi-Fi mati', access: 'Aktifkan Layanan Lokasi di Pengaturan Windows', noadapter: 'Adapter Wi-Fi tidak ada' }[r.error] || 'Tidak dapat memindai'; return; }
+  $('#wifiStat').textContent = r.nets.length ? r.nets.length + ' jaringan' : 'Tidak ada jaringan';
+  $('#wifiList').replaceChildren(...r.nets.map(n => {
+    const cur = n.ssid === wifiCur, row = el('div', 'row go' + (cur ? ' cur' : '')); row.tabIndex = 0;
+    row.append(el('span', 'nm', n.ssid));
+    if (cur) row.append(el('span', 'st', 'Tersambung'));
+    if (n.secured) row.append(svgIcon('lock'));
+    row.append(mb(n.bars)); row.title = cur ? 'Ketuk untuk memutus' : 'Ketuk untuk menyambung';
+    row.onclick = () => cur ? wifiDisconnect() : wifiConnect(n.ssid);
+    row.onkeydown = e => { if (e.key === 'Enter') row.click(); };
+    return row;
+  }));
+}
+async function wifiDisconnect() { $('#wifiStat').textContent = 'Memutus...'; await invoke('wifi_disconnect'); setTimeout(wifiRefresh, 1200); }
+async function wifiConnect(ssid, pw) {
+  $('#wifiStat').textContent = 'Menyambung ke ' + ssid + '...';
+  let res; try { res = await invoke('wifi_connect', { ssid, password: pw || null }); } catch { res = 'error'; }
+  if (res === 'ok') { hidePwd(); $('#wifiStat').textContent = 'Tersambung ke ' + ssid; setTimeout(wifiRefresh, 1500); return; }
+  if (res === 'need_password' || res === 'bad_password') { showPwd(ssid, res === 'bad_password' ? 'Sandi salah, coba lagi untuk ' + ssid : 'Sandi untuk ' + ssid); return; }
+  $('#wifiStat').textContent = { nonet: 'Jaringan tidak ditemukan', access: 'Izin lokasi diperlukan' }[res] || 'Gagal tersambung';
+}
+function showPwd(ssid, label) { pwdSsid = ssid; $('#pwdFor').textContent = label; $('#pwdIn').value = ''; $('#wifiList').hidden = true; $('#wifiPwd').hidden = false; $('#pwdIn').focus(); }
+function hidePwd() { $('#wifiPwd').hidden = true; $('#wifiList').hidden = false; $('#pwdIn').value = ''; }
+$('#pwdGo').onclick = () => { const pw = $('#pwdIn').value; if (pw) wifiConnect(pwdSsid, pw); };
+$('#pwdNo').onclick = hidePwd;
+$('#pwdIn').onkeydown = e => { if (e.key === 'Enter') $('#pwdGo').click(); else if (e.key === 'Escape') hidePwd(); };
+$('#pwdIn').onfocus = () => invoke('set_pin', { pinned: true });
+$('#pwdIn').onblur = () => invoke('set_pin', { pinned: false });
+$('#wifiScan').onclick = wifiRefresh;
+$('#wifiSw').onclick = async () => {
+  const on = $('#wifiSw').getAttribute('aria-checked') !== 'true'; setSw('#wifiSw', on);
+  const r = await invoke('radio_set', { kind: 'wifi', on });
+  if (r !== 'ok') { setSw('#wifiSw', !on); $('#wifiStat').textContent = 'Tidak dapat mengubah Wi-Fi'; return; }
+  if (on) { $('#wifiStat').textContent = 'Menyalakan...'; setTimeout(wifiRefresh, 3000); } else { $('#wifiList').replaceChildren(); $('#wifiStat').textContent = 'Wi-Fi mati'; }
+};
+
+/* ---- Menu cepat Bluetooth ---- */
+async function btRefresh() {
+  $('#btStat').textContent = 'Memuat...'; $('#btList').replaceChildren();
+  let r; try { r = await invoke('bt_list'); } catch { r = { radio: null, devices: [] }; }
+  setSw('#btSw', r.radio);
+  if (r.radio !== true) { $('#btStat').textContent = r.radio === false ? 'Bluetooth mati' : 'Bluetooth tidak tersedia'; return; }
+  $('#btStat').textContent = r.devices.length ? r.devices.length + ' perangkat dipasangkan' : 'Belum ada perangkat dipasangkan';
+  $('#btList').replaceChildren(...r.devices.map(d => {
+    const row = el('div', 'row' + (d.connected ? ' cur' : ''));
+    row.append(el('span', 'nm', d.name));
+    const live = S.conn && S.conn.bt.devices.find(x => x.name === d.name);
+    if (d.connected && live && live.battery != null) { const bb = el('span', 'db'); bb.append(miniRing(live.battery / 100, battColor({ level: live.battery / 100, charging: false })), live.battery + '%'); row.append(bb); }
+    row.append(el('span', 'st', d.connected ? 'Tersambung' : ''));
+    const btn = el('button', 'pb', d.connected ? 'Putus' : 'Sambung');
+    btn.onclick = async () => {
+      $('#btStat').textContent = (d.connected ? 'Memutus ' : 'Menyambung ') + d.name + '...';
+      let res; try { res = await invoke('bt_toggle', { addr: d.addr, connect: !d.connected }); } catch { res = 'error'; }
+      $('#btStat').textContent = res === 'ok' ? 'Selesai, memeriksa...' : 'Gagal (' + res + '). Coba lewat Pengaturan Windows';
+      setTimeout(btRefresh, res === 'ok' ? 3000 : 5000);
+    };
+    row.append(btn); return row;
+  }));
+}
+$('#btScan').onclick = btRefresh;
+$('#btSw').onclick = async () => {
+  const on = $('#btSw').getAttribute('aria-checked') !== 'true'; setSw('#btSw', on);
+  const r = await invoke('radio_set', { kind: 'bluetooth', on });
+  if (r !== 'ok') { setSw('#btSw', !on); $('#btStat').textContent = 'Tidak dapat mengubah Bluetooth'; return; }
+  setTimeout(btRefresh, on ? 2500 : 300);
+};
+
+$$('[data-go]').forEach(b => b.onclick = () => showTab(b.dataset.go));
+
+/* ---- Mulai otomatis saat Windows menyala (aktif otomatis pada peluncuran pertama versi rilis) ---- */
+const autoSw = $('#autoSw');
+function drawAuto(on, dev) {
+  setSw('#autoSw', dev ? null : on); autoSw.dataset.dev = dev ? '1' : '';
+  $('#autoNote').textContent = dev ? '(hanya versi rilis)' : '';
+}
+autoSw.onclick = async () => {
+  if (autoSw.dataset.dev) return;
+  const want = autoSw.getAttribute('aria-checked') !== 'true';
+  setSw('#autoSw', want);
+  let r; try { r = await invoke('autostart_set', { on: want }); } catch { r = 'failed'; }
+  if (r === 'ok') drawAuto(want); else if (r === 'dev') drawAuto(false, true); else setSw('#autoSw', !want);
+};
+(async () => {
+  let on = false, dev = false;
+  try { on = await invoke('autostart_get'); } catch {}
+  if (!store.get('autoInit', false)) {
+    try { const r = await invoke('autostart_set', { on: true }); if (r === 'ok') { on = true; store.set('autoInit', true); } else if (r === 'dev') dev = true; } catch {}
+  }
+  drawAuto(on, dev);
+})();
+
+/* ---- Keluar (klik dua kali agar tidak tertutup tanpa sengaja) ---- */
+let quitArm;
+$('#quitBtn').onclick = () => {
+  const b = $('#quitBtn'); if (b.dataset.arm) { invoke('quit'); return; }
+  b.dataset.arm = '1'; b.textContent = 'Yakin? Klik lagi';
+  clearTimeout(quitArm); quitArm = setTimeout(() => { delete b.dataset.arm; b.textContent = 'Keluar'; }, 3000);
+};
+
+/* ---- Tombol roda gigi ---- */
+$('#setBtn').onclick = () => showTab(curTab === 'settings' ? 'home' : 'settings');
+
+/* ---- Buka/tutup ---- */
+function setOpen(open) {
+  if (open) { clearTimeout(peekTimer); notch.classList.remove('peek'); }
+  notch.classList.toggle('open', open);
+  invoke('set_sys', { on: open && curTab === 'sys' });
+  clearInterval(clockTimer);
+  if (open) { tick(); drawWeek(); drawTimer(); clockTimer = setInterval(tick, 1000); }
+  else { if (document.activeElement) document.activeElement.blur(); drawMini(); }
+}
+T.event.listen('notch-open', e => setOpen(e.payload));
+drawShelf(); drawTimer();
+</script>
+</body>
+</html>
