@@ -2,14 +2,14 @@
 src-tauri/target
 src-tauri/gen
 
-# Hasil build dan installer (bagikan lewat GitHub Releases, bukan di repo)
+# Hasil build dan installer
 *.exe
 *.msi
 *.dll
 *.pdb
 *.zip
 
-# Node (jika nanti dipakai)
+# Node
 node_modules/
 
 # Editor dan sistem operasi
